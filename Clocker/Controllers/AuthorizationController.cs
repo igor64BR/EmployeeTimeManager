@@ -1,5 +1,6 @@
 ﻿using Clocker.Controllers.Base;
 using Clocker.Entities.Users;
+using Clocker.Globals;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
@@ -25,6 +26,7 @@ namespace Clocker.Controllers
         }
 
         [HttpGet]
+        [Authorize(Roles = Roles.Admin)]
         public async Task<IActionResult> List()
         {
             var users = await _userManager.Users.ToListAsync();
@@ -93,11 +95,9 @@ namespace Clocker.Controllers
             var credentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
 
             var token = new JwtSecurityToken(
-                issuer: configuration["Jwt:Issuer"],
-                audience: configuration["Jwt:Audience"],
                 claims: claims,
-                expires: DateTime.Now.AddDays(1),
-                signingCredentials: credentials);
+                signingCredentials: credentials,
+                expires: DateTime.Now.AddDays(1));
 
             return token;
         }

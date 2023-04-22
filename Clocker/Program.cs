@@ -27,7 +27,8 @@ builder.Services.AddAuthentication(opt =>
     {
         config.TokenValidationParameters = new TokenValidationParameters
         {
-            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(builder.Configuration["Jwt:SecretKey"])),
+            IssuerSigningKey = new SymmetricSecurityKey(
+                Encoding.UTF8.GetBytes(builder.Configuration["Jwt:SecretKey"].PadRight(32, '\0'))),
             ValidateIssuer = false,
             ValidateAudience = false
         };
