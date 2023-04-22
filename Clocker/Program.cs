@@ -3,65 +3,75 @@ using Clocker.Entities.Users;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Identity.Web;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
-
-// Add services to the container.
-builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-    .AddMicrosoftIdentityWebApi(builder.Configuration.GetSection("AzureAd"));
+var configuration = new ConfigurationBuilder()
+    .SetBasePath(Directory.GetCurrentDirectory())
+    .AddJsonFile("appsettings.json", optional: true, reloadOnChange: true)
+    .Build();
 
 builder.Services.AddControllers();
-// Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
-builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
+
+builder.Services.AddIdentity<AppUser, Role>()
+    .AddEntityFrameworkStores<ClockerDbContext>()
+    .AddDefaultTokenProviders();
+
+builder.Services.AddAuthentication(opt =>
+{
+    opt.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+    opt.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+})
+    .AddJwtBearer(config =>
+    {
+        config.TokenValidationParameters = new TokenValidationParameters
+        {
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(builder.Configuration["Jwt:SecretKey"])),
+            ValidateIssuer = false,
+            ValidateAudience = false
+        };
+
+        config.Events = new JwtBearerEvents
+        {
+            OnTokenValidated = async (ctx) =>
+            {
+                var signInManager = ctx.HttpContext.RequestServices
+                    .GetRequiredService<SignInManager<AppUser>>();
+
+                var user = await signInManager.ValidateSecurityStampAsync(ctx.Principal);
+
+                if (user == null)
+                    ctx.Fail("Invalid Security Stamp");
+            }
+        };
+    });
+
+builder.Services.AddCors(opt => opt.AddPolicy("CorsPolicy", builder =>
+{
+    builder.AllowAnyHeader()
+        .AllowAnyMethod()
+        .SetIsOriginAllowed((x) => true)
+        .AllowCredentials();
+}));
 
 // Sqlite3
 builder.Services.AddDbContext<ClockerDbContext>(opt =>
     opt.UseSqlite(builder.Configuration.GetConnectionString("DefaultConnection"))
 );
 
-// Identity
-builder.Services.AddIdentity<AppUser, IdentityRole<Guid>>(options =>
-{
-    // Configure password requirements if desired
-    options.Password.RequireDigit = true;
-    options.Password.RequireLowercase = true;
-    options.Password.RequireUppercase = true;
-    options.Password.RequireNonAlphanumeric = false;
-    options.Password.RequiredLength = 8;
-})
-    .AddEntityFrameworkStores<ClockerDbContext>()
-    .AddDefaultTokenProviders();
+builder.Services.Configure<IISServerOptions>(opt => opt.MaxRequestBodySize = int.MaxValue);
 
-builder.Services.AddAuthentication(options =>
-{
-    options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
-    options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
-})
-.AddJwtBearer(options =>
-{
-    options.TokenValidationParameters = new TokenValidationParameters
-    {
-        ValidateIssuer = true,
-        ValidateAudience = true,
-        ValidateLifetime = true,
-        ValidateIssuerSigningKey = true,
-        ValidIssuer = "your_issuer",
-        ValidAudience = "your_audience",
-        IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes("your_secret_key"))
-    };
-});
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen();
 
-builder.Services.AddAuthorization(options =>
-{
-    options.AddPolicy("RequireAdminRole", policy => policy.RequireRole("Admin"));
-});
-
+builder.Services.AddTransient<Seeder>();
 
 var app = builder.Build();
+
+await RunSeederAsync(app);
+
+app.UseCors("CorsPolicy");
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
@@ -69,6 +79,8 @@ if (app.Environment.IsDevelopment())
     app.UseSwagger();
     app.UseSwaggerUI();
 }
+
+app.UseDeveloperExceptionPage();
 
 app.UseHttpsRedirection();
 
@@ -78,3 +90,10 @@ app.UseAuthorization();
 app.MapControllers();
 
 app.Run();
+
+static async Task RunSeederAsync(WebApplication app)
+{
+    using var scope = app.Services.CreateScope();
+    var seeder = scope.ServiceProvider.GetRequiredService<Seeder>();
+    await seeder.SeedAsync();
+};

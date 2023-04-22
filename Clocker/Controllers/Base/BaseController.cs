@@ -1,10 +1,11 @@
-﻿using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
 
 namespace Clocker.Controllers.Base
 {
     [Route("[controller]")]
     [ApiController]
-    [CustomAuthorize]
+    [Authorize]
     public class BaseController : ControllerBase
     {
     }
