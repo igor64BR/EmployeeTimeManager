@@ -1,4 +1,6 @@
 ﻿using Clocker.Controllers.Base;
+using Clocker.Controllers.VMs;
+using Clocker.Controllers.VMs.Authorization;
 using Clocker.Entities.Users;
 using Clocker.Globals;
 using Microsoft.AspNetCore.Authorization;
@@ -25,47 +27,76 @@ namespace Clocker.Controllers
             _configuration = configuration;
         }
 
+        [HttpPost]
+        [Authorize(Roles = Roles.Admin)]
+        public async Task<IActionResult> Create(LoginInput login)
+        {
+            var user = new AppUser()
+            {
+                Email = login.Email,
+                UserName = login.Email,
+            };
+
+            var result = await _userManager.CreateAsync(user, login.Password);
+
+            return result.Succeeded
+                ? Ok(new BaseOutput(result))
+                : BadRequest(new BaseOutput(result.Errors.Select(x => x.Description)));
+        }
+
         [HttpGet]
         [Authorize(Roles = Roles.Admin)]
         public async Task<IActionResult> List()
         {
             var users = await _userManager.Users.ToListAsync();
 
-            return Ok(users.Select(x => new
+            return Ok(new BaseOutput(users.Select(x => new
             {
                 x.Id,
                 x.UserName,
                 x.Email
-            }));
+            })));
+        }
+
+        [HttpGet("CurrentUser")]
+        public async Task<IActionResult> GetCurrentUser()
+        {
+            var user = await _userManager.FindByIdAsync(CurrentUserId!.Value.ToString());
+
+            return Ok(new
+            {
+                user.Id,
+                user.UserName,
+                user.Email,
+                Roles = await _userManager.GetRolesAsync(user)
+            });
         }
 
         [HttpPost("login")]
         [AllowAnonymous]
-        public async Task<IActionResult> Login(LoginDto model)
+        public async Task<IActionResult> Login(LoginInput model)
         {
             var user = await _userManager.FindByEmailAsync(model.Email);
+
             if (user == null)
-            {
-                return Unauthorized();
-            }
+                return BadRequest(new BaseOutput("Email não encontrado"));
 
             var result = await _signInManager.CheckPasswordSignInAsync(user, model.Password, false);
-            if (result.Succeeded)
+
+            if (!result.Succeeded)
+                return BadRequest(new BaseOutput("Senha incorreta"));
+
+            var claims = await _userManager.GetClaimsAsync(user);
+            var token = await GenerateTokenAsync(user, claims, _configuration);
+            return Ok(new BaseOutput(new
             {
-                var claims = await _userManager.GetClaimsAsync(user);
-                var token = await GenerateTokenAsync(user, claims, _configuration);
-                return Ok(new
+                User = new
                 {
-                    User = new
-                    {
-                        user.Id,
-                    },
+                    user.Id,
+                },
 
-                    Token = new JwtSecurityTokenHandler().WriteToken(token)
-                });
-            }
-
-            return Unauthorized();
+                Token = new JwtSecurityTokenHandler().WriteToken(token)
+            }));
         }
 
         private async Task<JwtSecurityToken> GenerateTokenAsync(
@@ -101,11 +132,5 @@ namespace Clocker.Controllers
 
             return token;
         }
-    }
-
-    public class LoginDto
-    {
-        public string Email { get; set; }
-        public string Password { get; set; }
     }
 }
