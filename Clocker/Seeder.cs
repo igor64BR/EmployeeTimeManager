@@ -41,7 +41,7 @@ namespace Clocker
         {
 
             const string email = "admin@admin.com";
-            const string userName = "admin";
+            const string userName = "Administrador";
             const string password = "Password@123";
 
             var user = await _userManager.FindByEmailAsync(email);
@@ -53,6 +53,7 @@ namespace Clocker
                     Id = Guid.NewGuid(),
                     Email = email,
                     UserName = userName,
+                    Name = userName,
                 }, password);
 
                 if (result != IdentityResult.Success)

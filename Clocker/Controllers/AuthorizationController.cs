@@ -27,21 +27,75 @@ namespace Clocker.Controllers
             _configuration = configuration;
         }
 
+        [HttpGet("{id}")]
+        [Authorize(Roles = Roles.Admin)]
+        public async Task<IActionResult> GetById(Guid id)
+        {
+            var user = await _userManager.FindByIdAsync(id.ToString());
+
+            if (user is null)
+                return BadRequest(new BaseOutput("Usuário não encontrado"));
+
+            return Ok(new BaseOutput(new
+            {
+                user.Id,
+                user.Email,
+                user.UserName
+            }));
+        }
+
         [HttpPost]
         [Authorize(Roles = Roles.Admin)]
-        public async Task<IActionResult> Create(LoginInput login)
+        public async Task<IActionResult> Create(FormUserInput input)
         {
             var user = new AppUser()
             {
-                Email = login.Email,
-                UserName = login.Email,
+                Email = input.Email,
+                UserName = input.Email,
+                Name = input.UserName,
             };
 
-            var result = await _userManager.CreateAsync(user, login.Password);
+            var result = await _userManager.CreateAsync(user, input.Password);
 
             return result.Succeeded
                 ? Ok(new BaseOutput(result))
                 : BadRequest(new BaseOutput(result.Errors.Select(x => x.Description)));
+        }
+
+        [HttpPut("{id}")]
+        [Authorize(Roles = Roles.Admin)]
+        public async Task<IActionResult> Edit(FormUserInput input, Guid id)
+        {
+            var user = await _userManager.FindByIdAsync(id.ToString());
+
+            user.Email = input.Email;
+            user.Name = input.UserName;
+
+            var result = await _userManager.UpdateAsync(user);
+
+            if (!result.Succeeded)
+                return BadRequest(new BaseOutput(result.Errors.Select(x => x.Description)));
+
+            var token = await _userManager.GeneratePasswordResetTokenAsync(user);
+            result = await _userManager.ResetPasswordAsync(user, token, input.Password);
+
+            if (!result.Succeeded)
+                return BadRequest(new BaseOutput(result.Errors.Select(x => x.Description)));
+
+            return Ok(new BaseOutput(new { user.Id }));
+        }
+
+        [HttpDelete("{id}")]
+        [Authorize(Roles = Roles.Admin)]
+        public async Task<IActionResult> Delete(Guid id)
+        {
+            var user = await _userManager.FindByIdAsync(id.ToString());
+
+            if (user is null) return BadRequest(new BaseOutput("Usuário não encontrado"));
+
+            await _userManager.DeleteAsync(user);
+
+            return Ok(new BaseOutput(id));
         }
 
         [HttpGet]
@@ -53,7 +107,7 @@ namespace Clocker.Controllers
             return Ok(new BaseOutput(users.Select(x => new
             {
                 x.Id,
-                x.UserName,
+                x.Name,
                 x.Email
             })));
         }
