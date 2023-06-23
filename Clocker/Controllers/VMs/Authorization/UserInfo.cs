@@ -4,7 +4,7 @@ namespace Clocker.Controllers.VMs.Authorization
 {
     public class UserInfo
     {
-        public UserInfo(AppUser user)
+        public UserInfo(AppUser user, string role)
         {
             Id = user.Id;
             Name = user.Name;
@@ -12,13 +12,15 @@ namespace Clocker.Controllers.VMs.Authorization
             PhoneNumber = user.PhoneNumber;
             UserName = user.UserName;
             Address = user.Address;
+            Permission = role;
         }
 
-        public Guid Id { get; internal set; }
-        public string Name { get; internal set; }
-        public string Email { get; internal set; }
-        public string PhoneNumber { get; internal set; }
-        public string UserName { get; internal set; }
-        public string Address { get; internal set; }
+        public Guid Id { get; set; }
+        public string Name { get; set; }
+        public string Email { get; set; }
+        public string PhoneNumber { get; set; }
+        public string UserName { get; set; }
+        public string Address { get; set; }
+        public string Permission { get; set; }
     }
 }

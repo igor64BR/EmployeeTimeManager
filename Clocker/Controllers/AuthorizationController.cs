@@ -19,12 +19,18 @@ namespace Clocker.Controllers
     {
         private readonly SignInManager<AppUser> _signInManager;
         private readonly UserManager<AppUser> _userManager;
+        private readonly RoleManager<Role> _roleManager;
         private readonly IConfiguration _configuration;
 
-        public AuthorizationController(SignInManager<AppUser> signInManager, UserManager<AppUser> userManager, IConfiguration configuration)
+        public AuthorizationController(
+            SignInManager<AppUser> signInManager,
+            UserManager<AppUser> userManager,
+            RoleManager<Role> roleManager,
+            IConfiguration configuration)
         {
             _signInManager = signInManager;
             _userManager = userManager;
+            _roleManager = roleManager;
             _configuration = configuration;
         }
 
@@ -44,9 +50,12 @@ namespace Clocker.Controllers
 
             var result = await _userManager.CreateAsync(user, input.Password);
 
-            return result.Succeeded
-                ? Ok(new BaseOutput(result))
-                : BadRequest(new BaseOutput(result.Errors.Select(x => x.Description)));
+            if (!result.Succeeded)
+                return BadRequest(new BaseOutput(result.Errors.Select(x => x.Description)));
+
+            await EditRoleAsync(input.PermissionName, user);
+
+            return Ok(new BaseOutput(result));
         }
 
         [HttpPost("login")]
@@ -94,6 +103,15 @@ namespace Clocker.Controllers
             })));
         }
 
+        [HttpGet("Roles")]
+        [Authorize(Roles = Roles.Admin)]
+        public async Task<IActionResult> GetRoles()
+        {
+            var roles = await _roleManager.Roles.ToListAsync();
+
+            return Ok(new BaseOutput(roles));
+        }
+
         [HttpGet("CurrentUser")]
         public async Task<IActionResult> GetCurrentUser()
         {
@@ -102,9 +120,11 @@ namespace Clocker.Controllers
 
             var user = await _userManager.FindByIdAsync(CurrentUserId.ToString());
 
+            var role = await _userManager.GetRolesAsync(user);
+
             return Ok(new BaseOutput(new CurrentUser
             {
-                User = new UserInfo(user),
+                User = new UserInfo(user, role.FirstOrDefault()),
                 Roles = await _userManager.GetRolesAsync(user)
             }));
         }
@@ -118,7 +138,9 @@ namespace Clocker.Controllers
             if (user is null)
                 return BadRequest(new BaseOutput("Usuário não encontrado"));
 
-            return Ok(new BaseOutput(new UserInfo(user)));
+            var role = await _userManager.GetRolesAsync(user);
+
+            return Ok(new BaseOutput(new UserInfo(user, role.FirstOrDefault())));
         }
 
         [HttpPut("{id}")]
@@ -131,6 +153,7 @@ namespace Clocker.Controllers
             user.Name = input.UserName;
             user.Address = input.Address;
             user.PhoneNumber = input.PhoneNumber;
+            await EditRoleAsync(input.PermissionName, user);
 
             var result = await _userManager.UpdateAsync(user);
 
@@ -220,6 +243,15 @@ namespace Clocker.Controllers
                 expires: DateTime.Now.AddDays(1));
 
             return token;
+        }
+
+        private async Task EditRoleAsync(string roleName, AppUser user)
+        {
+            var currentRoles = await _userManager.GetRolesAsync(user);
+
+            await _userManager.RemoveFromRolesAsync(user, currentRoles);
+
+            await _userManager.AddToRoleAsync(user, roleName);
         }
     }
 }
