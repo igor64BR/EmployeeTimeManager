@@ -1,6 +1,7 @@
 ﻿using Clocker.Controllers.Base;
 using Clocker.Controllers.VMs;
 using Clocker.Controllers.VMs.Authorization;
+using Clocker.Controllers.VMs.QueryParameters;
 using Clocker.Entities.Users;
 using Clocker.Globals;
 using Microsoft.AspNetCore.Authorization;
@@ -27,22 +28,6 @@ namespace Clocker.Controllers
             _configuration = configuration;
         }
 
-        [HttpGet("{id}")]
-        [Authorize(Roles = Roles.Admin)]
-        public async Task<IActionResult> GetById(Guid id)
-        {
-            var user = await _userManager.FindByIdAsync(id.ToString());
-
-            if (user is null)
-                return BadRequest(new BaseOutput("Usuário não encontrado"));
-
-            return Ok(new BaseOutput(new
-            {
-                user.Id,
-                user.Email,
-                user.UserName
-            }));
-        }
 
         [HttpPost]
         [Authorize(Roles = Roles.Admin)]
@@ -60,70 +45,6 @@ namespace Clocker.Controllers
             return result.Succeeded
                 ? Ok(new BaseOutput(result))
                 : BadRequest(new BaseOutput(result.Errors.Select(x => x.Description)));
-        }
-
-        [HttpPut("{id}")]
-        [Authorize(Roles = Roles.Admin)]
-        public async Task<IActionResult> Edit(FormUserInput input, Guid id)
-        {
-            var user = await _userManager.FindByIdAsync(id.ToString());
-
-            user.Email = input.Email;
-            user.Name = input.UserName;
-
-            var result = await _userManager.UpdateAsync(user);
-
-            if (!result.Succeeded)
-                return BadRequest(new BaseOutput(result.Errors.Select(x => x.Description)));
-
-            var token = await _userManager.GeneratePasswordResetTokenAsync(user);
-            result = await _userManager.ResetPasswordAsync(user, token, input.Password);
-
-            if (!result.Succeeded)
-                return BadRequest(new BaseOutput(result.Errors.Select(x => x.Description)));
-
-            return Ok(new BaseOutput(new { user.Id }));
-        }
-
-        [HttpDelete("{id}")]
-        [Authorize(Roles = Roles.Admin)]
-        public async Task<IActionResult> Delete(Guid id)
-        {
-            var user = await _userManager.FindByIdAsync(id.ToString());
-
-            if (user is null) return BadRequest(new BaseOutput("Usuário não encontrado"));
-
-            await _userManager.DeleteAsync(user);
-
-            return Ok(new BaseOutput(id));
-        }
-
-        [HttpGet]
-        [Authorize(Roles = Roles.Admin)]
-        public async Task<IActionResult> List()
-        {
-            var users = await _userManager.Users.ToListAsync();
-
-            return Ok(new BaseOutput(users.Select(x => new
-            {
-                x.Id,
-                x.Name,
-                x.Email
-            })));
-        }
-
-        [HttpGet("CurrentUser")]
-        public async Task<IActionResult> GetCurrentUser()
-        {
-            var user = await _userManager.FindByIdAsync(CurrentUserId!.Value.ToString());
-
-            return Ok(new
-            {
-                user.Id,
-                user.UserName,
-                user.Email,
-                Roles = await _userManager.GetRolesAsync(user)
-            });
         }
 
         [HttpPost("login")]
@@ -151,6 +72,118 @@ namespace Clocker.Controllers
 
                 Token = new JwtSecurityTokenHandler().WriteToken(token)
             }));
+        }
+
+        [HttpGet]
+        [Authorize(Roles = Roles.Admin)]
+        public async Task<IActionResult> List([FromQuery] UserListFilter filter)
+        {
+            filter.Name = Request.Query["q"];
+
+            var users = await _userManager.Users
+                .Where(filter.Predicate)
+                .ToListAsync();
+
+            return Ok(new BaseOutput(users.Select(x => new
+            {
+                x.Id,
+                x.Name,
+                x.Email
+            })));
+        }
+
+        [HttpGet("CurrentUser")]
+        public async Task<IActionResult> GetCurrentUser()
+        {
+            if (CurrentUserId is null)
+                return BadRequest("Você precisa estar logado para acessar esta página");
+
+            var user = await _userManager.FindByIdAsync(CurrentUserId.ToString());
+
+            return Ok(new BaseOutput(new CurrentUser
+            {
+                User = new UserInfo(user),
+                Roles = await _userManager.GetRolesAsync(user)
+            }));
+        }
+
+        [HttpGet("{id}")]
+        [Authorize(Roles = Roles.Admin)]
+        public async Task<IActionResult> GetById(Guid id)
+        {
+            var user = await _userManager.FindByIdAsync(id.ToString());
+
+            if (user is null)
+                return BadRequest(new BaseOutput("Usuário não encontrado"));
+
+            return Ok(new BaseOutput(new UserInfo(user)));
+        }
+
+        [HttpPut("{id}")]
+        [Authorize(Roles = Roles.Admin)]
+        public async Task<IActionResult> Edit(FormUserInput input, Guid id)
+        {
+            var user = await _userManager.FindByIdAsync(id.ToString());
+
+            user.Email = input.Email;
+            user.Name = input.UserName;
+            user.Address = input.Address;
+            user.PhoneNumber = input.PhoneNumber;
+
+            var result = await _userManager.UpdateAsync(user);
+
+            if (!result.Succeeded)
+                return BadRequest(new BaseOutput(result.Errors.Select(x => x.Description)));
+
+            var token = await _userManager.GeneratePasswordResetTokenAsync(user);
+            result = await _userManager.ResetPasswordAsync(user, token, input.Password);
+
+            if (!result.Succeeded)
+                return BadRequest(new BaseOutput(result.Errors.Select(x => x.Description)));
+
+            return Ok(new BaseOutput(new { user.Id }));
+        }
+
+        [HttpPut("CurrentUser")]
+        public async Task<IActionResult> EditCurrentUser(FormUserInput input)
+        {
+            if (CurrentUserId is null)
+                return BadRequest("Você precisa estar logado para acessar esta página");
+
+            var user = await _userManager.FindByIdAsync(CurrentUserId.ToString());
+
+            user.Email = input.Email;
+            user.UserName = input.Email;
+            user.Address = input.Address;
+            user.PhoneNumber = input.PhoneNumber;
+
+            var result = await _userManager.UpdateAsync(user);
+
+            if (!result.Succeeded)
+                return BadRequest(new BaseOutput(result.Errors.Select(x => x.Description)));
+
+            if (input.PasswordHasChanged)
+            {
+                result = await _userManager.ChangePasswordAsync(user, input.CurrentPassword, input.Password);
+
+                if (!result.Succeeded)
+                    return BadRequest(new BaseOutput(result.Errors.Select(x => x.Description)));
+            }
+
+            return Ok(new BaseOutput(new { user.Id }));
+        }
+
+        [HttpDelete("{id}")]
+        [Authorize(Roles = Roles.Admin)]
+        public async Task<IActionResult> Delete(Guid id)
+        {
+            var user = await _userManager.FindByIdAsync(id.ToString());
+
+            if (user is null) return BadRequest(new BaseOutput("Usuário não encontrado"));
+
+            await _userManager.DeleteAsync(user);
+
+            return Ok(new BaseOutput(id));
         }
 
         private async Task<JwtSecurityToken> GenerateTokenAsync(
