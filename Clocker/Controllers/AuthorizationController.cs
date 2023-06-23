@@ -38,6 +38,8 @@ namespace Clocker.Controllers
                 Email = input.Email,
                 UserName = input.Email,
                 Name = input.UserName,
+                Address = input.Address,
+                PhoneNumber = input.PhoneNumber
             };
 
             var result = await _userManager.CreateAsync(user, input.Password);
