@@ -39,6 +39,9 @@ namespace Clocker.Controllers
         [Authorize(Roles = Roles.Admin)]
         public async Task<IActionResult> Create(FormUserInput input)
         {
+            if (string.IsNullOrEmpty(input.Password))
+                return BadRequest("Senha obrigatória");
+
             var user = new AppUser()
             {
                 Email = input.Email,
@@ -160,11 +163,15 @@ namespace Clocker.Controllers
             if (!result.Succeeded)
                 return BadRequest(new BaseOutput(result.Errors.Select(x => x.Description)));
 
-            var token = await _userManager.GeneratePasswordResetTokenAsync(user);
-            result = await _userManager.ResetPasswordAsync(user, token, input.Password);
+            if (input.PasswordHasChanged)
+            {
+                var token = await _userManager.GeneratePasswordResetTokenAsync(user);
+                result = await _userManager.ResetPasswordAsync(user, token, input.Password);
 
-            if (!result.Succeeded)
-                return BadRequest(new BaseOutput(result.Errors.Select(x => x.Description)));
+                if (!result.Succeeded)
+                    return BadRequest(new BaseOutput(result.Errors.Select(x => x.Description)));
+            }
+
 
             return Ok(new BaseOutput(new { user.Id }));
         }
